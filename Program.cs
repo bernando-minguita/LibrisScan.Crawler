@@ -20,6 +20,7 @@ namespace LibrisScan.Crawler
         private static readonly string BaseDir = AppDomain.CurrentDomain.BaseDirectory;
         private static readonly string CredentialsPath = Path.Combine(BaseDir, "GoogleApiAuth", "google-credentials.json");
         private static readonly string LogFilePath = Path.Combine(BaseDir, "Logs", "processed_files.log");
+        private static List<string> SearchFilters = new List<string>();
 
         // Runtime directories loaded from appsettings.json
         private static string JsonDir = string.Empty;
@@ -102,8 +103,14 @@ namespace LibrisScan.Crawler
         {
             string safeFileName = fileName ?? string.Empty;
 
-            // Regex: Removes common site tags that confuse the Google search engine
-            var cleanQuery = Regex.Replace(safeFileName, @"\(Z-Library\)|-- Anna['’]s Archive|- libgen\.li", "", RegexOptions.IgnoreCase).Trim();
+            // Build the regex pattern dynamically from the external SearchFilters list.
+            // Use an empty pattern "$^" (which matches nothing) if no filters are provided.
+            string pattern = (SearchFilters != null && SearchFilters.Any())
+                ? string.Join("|", SearchFilters)
+                : "$^";
+
+            // Apply the dynamically built regex to clean the filename for the API search
+            var cleanQuery = Regex.Replace(safeFileName, pattern, "", RegexOptions.IgnoreCase).Trim();
 
             var list = new List<string>();
             try
@@ -211,14 +218,20 @@ namespace LibrisScan.Crawler
 
                 string safeBaseDir = BaseDir.Replace("\\", "\\\\");
 
-                // Note: The margin of the raw string is defined by the leftmost character of the braces below
+                // Note: The margin of the raw string is defined by the leftmost character of the closing triple quotes below
                 string defaultConfig = $$"""
                                         {
                                             "StorageSettings": {
                                             "JsonMetadataDir": "{{safeBaseDir}}GoogleBooks\\Metadata",
-                                            "CoversDir": "{{safeBaseDir}}Google-Books\\Covers",
+                                            "CoversDir": "{{safeBaseDir}}GoogleBooks\\Covers",
                                             "EbookSourceDir": "{{safeBaseDir}}E-Books Collections"
-                                            }
+                                            },
+                                            "SearchFilters": [
+                                            "\\(Z-Library\\)",
+                                            "-- Anna['’]s Archive",
+                                            "- libgen\\.li",
+                                            "\\(z-library\\.sk, 1lib\\.sk, z-lib\\.sk\\)"
+                                            ]
                                         }
                                         """;
 
@@ -234,6 +247,7 @@ namespace LibrisScan.Crawler
             JsonDir = config["StorageSettings:JsonMetadataDir"] ?? Path.Combine(BaseDir, "Metadata");
             CoversDir = config["StorageSettings:CoversDir"] ?? Path.Combine(BaseDir, "Covers");
             EbookSourceDir = config["StorageSettings:EbookSourceDir"] ?? Path.Combine(BaseDir, "Ebooks");
+            SearchFilters = config.GetSection("SearchFilters").Get<List<string>>() ?? new List<string>();
 
             Directory.CreateDirectory(JsonDir);
             Directory.CreateDirectory(CoversDir);
