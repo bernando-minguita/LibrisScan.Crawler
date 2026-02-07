@@ -43,16 +43,24 @@ namespace LibrisScan.Crawler
                 // Initialize folders, logs, and configuration
                 SetupEnvironment();
 
+                Console.ForegroundColor = ConsoleColor.Cyan;
+                Console.WriteLine("==================================================");
+                Console.WriteLine("       LibrisScan: Metadata Crawler Active        ");
+                Console.WriteLine("==================================================");
+                Console.ResetColor();
+
                 // Authentication is required for the BooksService to function
                 if (!File.Exists(CredentialsPath))
                 {
+                    Console.ForegroundColor = ConsoleColor.Red;
                     Console.WriteLine($"[FATAL] Google Credentials not found at: {CredentialsPath}");
+                    Console.ResetColor();
                     return;
                 }
 
                 var service = await AuthenticateService();
 
-                // Recursively gather all PDF and EPUB files from the source directory
+                // Recursively gather all PDF and EPUB files
                 var files = Directory.GetFiles(EbookSourceDir, "*.*", SearchOption.AllDirectories)
                     .Where(f => f.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase) ||
                                 f.EndsWith(".epub", StringComparison.OrdinalIgnoreCase)).ToList();
@@ -65,32 +73,90 @@ namespace LibrisScan.Crawler
                     currentIdx++;
                     UpdateTitle(currentIdx);
 
-                    // Stop processing if we hit Google's daily API limits
-                    if (isQuotaExhausted) break;
+                    if (isQuotaExhausted)
+                    {
+                        Console.ForegroundColor = ConsoleColor.DarkYellow;
+                        Console.WriteLine("\n[!] Quota exhausted. Stopping scan...");
+                        Console.ResetColor();
+                        break;
+                    }
 
-                    // Skip files already successfully logged in previous runs
-                    if (ProcessedFiles.Contains(filePath)) { countLogSkipped++; continue; }
+                    // Skip files already successfully logged
+                    if (ProcessedFiles.Contains(filePath))
+                    {
+                        countLogSkipped++;
+                        // Optional: Print small indicator for skipped files to show activity
+                        Console.ForegroundColor = ConsoleColor.DarkGray;
+                        Console.WriteLine($"[{currentIdx}/{countTotal}] Skipping: {Path.GetFileName(filePath)} (Already Processed)");
+                        Console.ResetColor();
+                        continue;
+                    }
 
+                    // Highlight the file currently being searched
+                    Console.ForegroundColor = ConsoleColor.White;
                     Console.WriteLine($"\n[{currentIdx}/{countTotal}] Searching: {Path.GetFileNameWithoutExtension(filePath)}");
+                    Console.ResetColor();
 
                     // Step 1: Search for the book by its filename
                     var isbns = await GetIsbnsFromSearch(service, Path.GetFileNameWithoutExtension(filePath));
 
-                    // Step 2: For every found ISBN, try to download metadata and covers
-                    foreach (var isbn in isbns)
+                    if (isbns.Count == 0)
                     {
-                        if (isQuotaExhausted) break;
-                        if (await ProcessIsbn(isbn)) countSaved++;
+                        Console.ForegroundColor = ConsoleColor.Yellow;
+                        Console.WriteLine($"   [?] No ISBNs found for this title.");
+                        Console.ResetColor();
+                    }
+                    else
+                    {
+                        // Step 2: For every found ISBN, try to download metadata and covers
+                        foreach (var isbn in isbns)
+                        {
+                            if (isQuotaExhausted) break;
 
-                        // Respectful delay to prevent getting flagged for scraping/spamming
-                        await Task.Delay(2500);
+                            Console.Write($"   [→] Processing ISBN: {isbn}... ");
+
+                            // Check if we already have this metadata on disk
+                            string jsonFileName = $"{isbn}.json";
+                            string jsonPath = Path.Combine(JsonDir, jsonFileName); // Ensure JsonDir is accessible here
+
+                            if (File.Exists(jsonPath))
+                            {
+                                Console.ForegroundColor = ConsoleColor.DarkCyan;
+                                Console.WriteLine("Exist");
+                                Console.ResetColor();
+                                continue; // Move to the next ISBN without calling the API
+                            }
+
+                            // If it doesn't exist, try to download it
+                            if (await ProcessIsbn(isbn))
+                            {
+                                countSaved++;
+                                Console.ForegroundColor = ConsoleColor.Green;
+                                Console.WriteLine("Saved!");
+                                Console.ResetColor();
+                            }
+                            else
+                            {
+                                // If ProcessIsbn returns false, it was either a network error or quota hit
+                                Console.ForegroundColor = ConsoleColor.Red;
+                                Console.WriteLine("Error (API Fail or Quota)");
+                                Console.ResetColor();
+                            }
+
+                            await Task.Delay(2500); // Respectful delay
+                        }
                     }
 
-                    // Log this file as 'handled' regardless of whether an ISBN was found
+                    // Log this file as 'handled'
                     SaveToLog(filePath);
                 }
             }
-            catch (Exception ex) { Console.WriteLine($"\n[FATAL ERROR] {ex.Message}"); }
+            catch (Exception ex)
+            {
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.WriteLine($"\n[FATAL ERROR] {ex.Message}");
+                Console.ResetColor();
+            }
 
             Finish();
         }
@@ -184,9 +250,9 @@ namespace LibrisScan.Crawler
                         }
                     }
 
-                    Console.ForegroundColor = ConsoleColor.Green;
-                    Console.WriteLine($"    [✔] Saved: {isbn}");
-                    Console.ResetColor();
+                    //Console.ForegroundColor = ConsoleColor.Green;
+                    //Console.WriteLine($"    [✔] Saved: {isbn}");
+                    //Console.ResetColor();
                     return true;
                 }
             }
