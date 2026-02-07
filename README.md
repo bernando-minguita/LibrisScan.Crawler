@@ -19,8 +19,14 @@ The application uses an `appsettings.json` file to manage paths. You can point t
 ```json
 {
   "StorageSettings": {
-    "JsonMetadataDir": "D:\\google_books\\isbn13",
+    "JsonMetadataDir": "D:\\google_books\\metadata",
     "CoversDir": "D:\\google_books\\covers",
     "EbookSourceDir": "D:\\E-Books Collections\\"
-  }
+  },
+  "SearchFilters": [
+    "\\(Z-Library\\)",
+    "-- Anna['’]s Archive",
+    "- libgen\\.li",
+    "\\(z-library\\.sk, 1lib\\.sk, z-lib\\.sk\\)"
+  ]
 }
